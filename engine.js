@@ -1,3 +1,24 @@
+/*
+    Echo1 Pipeline Simulator Simulator
+    Copyright (C) 2026 Wavepaper Media Inc.
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    
+    Contact: jim@crss.ca
+*/
+
+
 import { Project, Workspace } from 'https://esm.sh/epanet-js';
 
 // ==========================================
@@ -73,7 +94,9 @@ const SCADA_AUDIO = {
     // ALERT: A lush, welcoming C Major 9th chime (1 Chime, No Repeat)
     playAlert: function() { 
         this.stop(); 
+        this.currentSound = 'ALERT';
         this.playChord([261.63, 329.63, 392.00, 493.88, 587.33], 0.05, 2.0, 0.03, 0.04); 
+        setTimeout(() => { if (this.currentSound === 'ALERT') this.currentSound = null; }, 2500);
     },
 
     // PRIORITY 3: Fsus4 (1 Chime, 15 Seconds Silence)
@@ -126,7 +149,7 @@ function manageAudioPlayback() {
     
     // Stop audio if there are no unacked alarms OR if the system is globally muted
     if (unacked.length === 0 || SCADA_AUDIO.isMuted) {
-        if (!SCADA_AUDIO.isTesting) SCADA_AUDIO.stop(); 
+        if (!SCADA_AUDIO.isTesting && SCADA_AUDIO.currentSound !== 'ALERT') SCADA_AUDIO.stop(); 
         return;
     }
     
@@ -164,7 +187,7 @@ let pendingSpPressB = 100;
 let spPressC = 100; 
 let pendingSpPressC = 100;
 
-const spPressD = 100; // Locked static suction setpoint for delivery
+let spPressD = 100; // Dynamic suction setpoint for delivery
 
 let tankVolA = 50000; // Source Tank: Starts Full
 const maxTankVolA = 50000;
@@ -178,6 +201,9 @@ const meterBatchSize = 10000;
 let prevErrorA = 0; 
 let prevErrorB = 0;
 let prevErrorC = 0;
+
+let esdActive = false;
+let esdTick = 0;
 
 function restoreSessionState(forceLoad = false) {
     const savedState = localStorage.getItem('echo_snapshot');
@@ -194,12 +220,13 @@ function restoreSessionState(forceLoad = false) {
         trendData = []; 
         console.log("📂 Pipeline Snapshot Loaded from LocalStorage!");
     } else {
-        // FACTORY DEFAULTS (Clean Slate)
-        pendingSpPressA = 750; spPressA = 750; // Lower SP avoids initial suction alarms
-        pendingSpPressB = 100; spPressB = 100;
-        pendingSpPressC = 100; spPressC = 100;
-        rpmA = 90; rpmB = 90; rpmC = 80;
-        tankVolA = maxTankVolA; tankVolD = 0;
+            // FACTORY DEFAULTS (Clean Slate)
+            pendingSpPressA = 750; spPressA = 750; // Lower SP avoids initial suction alarms
+            pendingSpPressB = 100; spPressB = 100;
+            pendingSpPressC = 100; spPressC = 100;
+            spPressD = 100;
+            rpmA = 90; rpmB = 90; rpmC = 80;
+            tankVolA = maxTankVolA; tankVolD = 0;
         meterVolA = 0; meterVolD = 0;
         propagationBuffer = []; trendData = [];
         console.log("⟳ Starting with Clean Factory Defaults.");
@@ -208,11 +235,11 @@ function restoreSessionState(forceLoad = false) {
     const uiSpA = document.getElementById('ui-sp-a');
     if (uiSpA) uiSpA.innerText = pendingSpPressA;
     
-    currentMode = 'PAUSED';
+    currentMode = 'RUNNING';
     const statusEl = document.getElementById('sys-status-text');
     if (statusEl) {
-        statusEl.innerText = 'PAUSED';
-        statusEl.style.color = '#111111';
+        statusEl.innerText = 'RUNNING';
+        statusEl.style.color = '#006a6a';
     }
     isStepTick = true; // Take one step to flush UI geometry
 }
@@ -765,11 +792,36 @@ document.addEventListener('click', function(event) {
             
             // 3. GLOBAL ALARMS
             else if (buttonText === 'ESD') {
-                alert('🚨 EMERGENCY SHUTDOWN TRIGGERED 🚨');
-                btn.style.backgroundColor = '#ba1a1a'; 
-                btn.style.color = '#ffffff';
+                const modal = document.getElementById('esd-modal');
+                if (modal) modal.classList.remove('hidden');
             } 
-            else if (btn.id === 'btn-ack-all') { 
+            else if (btn.id === 'btn-support') {
+                const card = document.getElementById('q2-business-card');
+                if (card) card.classList.remove('hidden');
+            }
+            else if (btn.id === 'btn-close-card') {
+                const card = document.getElementById('q2-business-card');
+                if (card) card.classList.add('hidden');
+            }
+            else if (btn.id === 'btn-esd-cancel') {
+                const modal = document.getElementById('esd-modal');
+                if (modal) modal.classList.add('hidden');
+            }
+            else if (btn.id === 'btn-esd-confirm') {
+                const modal = document.getElementById('esd-modal');
+                if (modal) modal.classList.add('hidden');
+                
+                esdActive = true;
+                esdTick = 0;
+                currentMode = 'RUNNING'; // Force it to run the shutdown sequence if paused
+                
+                // Visually latch all ESD buttons
+                const esdBtns = [...document.querySelectorAll('button')].filter(b => b.innerText.trim() === 'ESD');
+                esdBtns.forEach(b => { b.style.backgroundColor = '#ba1a1a'; b.style.color = '#ffffff'; });
+                
+                setAlarmState('ESD_LOCAL', true, 'EMERGENCY SHUTDOWN INITIATED', 'Alert', 'TAG_SYS_INIT');
+            }
+            else if (btn.id === 'btn-ack-all') {
                 liveAlarms.forEach(a => a.acked = true);
                 liveAlarms = liveAlarms.filter(a => !(a.acked && !a.active)); // Clear RTN alarms instantly
                 renderAlarms();
@@ -1021,6 +1073,9 @@ async function initPhysicsEngine() {
     
     // Wipe the slate clean after warmup
     sessionSeconds = 0;
+    esdActive = false;
+    esdTick = 0;
+    spPressD = 100;
     tankVolA = maxTankVolA; tankVolD = 0;
     meterVolA = 0; meterVolD = 0;
     trendData = []; 
@@ -1195,7 +1250,7 @@ function runHydraulicTick() {
             let deltaRpmA = (kp_disc * (errorA - simPrevErrA)) + (ki_disc * errorA);
             deltaRpmA = Math.max(-MAX_RPM_DELTA, Math.min(MAX_RPM_DELTA, deltaRpmA)); 
             simPrevErrA = errorA; 
-            simRpmA = Math.max(50, Math.min(100, simRpmA + deltaRpmA)); // Testing 50% deadhead threshold
+            if (!esdActive) simRpmA = Math.max(50, Math.min(100, simRpmA + deltaRpmA)); // Testing 50% deadhead threshold
 
             // Stn B & C: Target Dynamic Suction Setpoints
             // Moderated gains heavily to account for EPANET's lack of mechanical inertia
@@ -1211,7 +1266,7 @@ function runHydraulicTick() {
             let deltaRpmB = (kp_suct * (errorB - simPrevErrB)) + (ki_suct * errorB);
             deltaRpmB = Math.max(-MAX_RPM_DELTA, Math.min(MAX_RPM_DELTA, deltaRpmB)); 
             simPrevErrB = errorB; 
-            simRpmB = pumpBTripped ? 0 : Math.max(50, Math.min(100, simRpmB + deltaRpmB)); 
+            if (!esdActive) simRpmB = pumpBTripped ? 0 : Math.max(50, Math.min(100, simRpmB + deltaRpmB)); 
 
             const targetPressC = isPredict ? spPressC : spPressC;
             let errorC = rawPressCSuct - targetPressC; 
@@ -1221,7 +1276,7 @@ function runHydraulicTick() {
             let deltaRpmC = (kp_suct * (errorC - simPrevErrC)) + (ki_suct * errorC);
             deltaRpmC = Math.max(-MAX_RPM_DELTA, Math.min(MAX_RPM_DELTA, deltaRpmC)); 
             simPrevErrC = errorC; 
-            simRpmC = pumpCTripped ? 0 : Math.max(50, Math.min(100, simRpmC + deltaRpmC));
+            if (!esdActive) simRpmC = pumpCTripped ? 0 : Math.max(50, Math.min(100, simRpmC + deltaRpmC));
 
             model.close();
             // Bulletproof WebAssembly memory cleanup (ignores if not required by your version)
@@ -1303,8 +1358,30 @@ function runHydraulicTick() {
         // 4. LIVE TICK PROTOCOL (If we reach here, it was NOT a predict tick)
         if (currentMode === 'RUNNING' || isStepTick) sessionSeconds++; // Increment Sim Time
 
-        // SYSTEM INIT ALARM (Strict equality prevents it from coming back after clear)
-        setAlarmState('SYS_INIT', sessionSeconds === 1, 'ECHO-1 INITIATED', 'Alert', 'TAG_SYS_INIT');
+        if (esdActive && (currentMode === 'RUNNING' || isStepTick)) {
+            esdTick++;
+            
+            // Soften pump shutdown: Ramp down RPM over 120 ticks (1% per tick)
+            if (esdTick < 120) {
+                simRpmA = Math.max(0, simRpmA - 1.0);
+                simRpmB = Math.max(0, simRpmB - 1.0);
+                simRpmC = Math.max(0, simRpmC - 1.0);
+            } else {
+                simRpmA = 0; simRpmB = 0; simRpmC = 0;
+            }
+            
+            pendingSpPressA = 0; pendingSpPressB = 0; pendingSpPressC = 0;
+            
+            // Raise delivery backpressure progressively to prevent line drain
+            if (esdTick % 10 === 0 && spPressD < 800) {
+                spPressD = Math.min(800, spPressD + 50);
+            }
+            
+            // Forcefully override UI setpoints for visual feedback
+            const uiSpA = document.getElementById('ui-sp-a'); if (uiSpA) uiSpA.innerText = 0;
+            const uiSpB = document.getElementById('ui-sp-b'); if (uiSpB) uiSpB.innerText = 0;
+            const uiSpC = document.getElementById('ui-sp-c'); if (uiSpC) uiSpC.innerText = 0;
+        }
 
         // SCENARIO EVENT EVALUATION
         for (let i = scenarioQueue.length - 1; i >= 0; i--) {
@@ -1398,14 +1475,30 @@ function runHydraulicTick() {
         const dashedFlow = document.getElementById('flow-line-predict');
         if (dashedFlow) dashedFlow.style.display = 'none';
 
-        // Update ground profile visuals
-        const groundPoly = document.querySelector('#q1-container svg polygon');
-        if (groundPoly) {
-            if (activeProfile === 'FLAT') {
-                groundPoly.setAttribute('points', '0,5000 160,5000 0,5000');
-            } else {
-                groundPoly.setAttribute('points', '0,3000 10,2600 40,3050 50,3200 80,2900 90,2800 150,4800 160,5000 0,5000');
-            }
+        // Update ground profile visuals and MAOH Polygon
+        const groundPoly = document.getElementById('ground-polygon') || document.querySelector('#q1-container svg polygon');
+        const maohPoly = document.getElementById('maoh-polygon');
+        
+        let profilePoints = [];
+        if (activeProfile === 'FLAT') {
+            if (groundPoly) groundPoly.setAttribute('points', '0,5000 160,5000 0,5000');
+            profilePoints = [[0, 0], [160, 0]];
+        } else {
+            if (groundPoly) groundPoly.setAttribute('points', '0,3000 10,2600 40,3050 50,3200 80,2900 90,2800 150,4800 160,5000 0,5000');
+            profilePoints = [[0, 2000], [10, 2400], [40, 1950], [50, 1800], [80, 2100], [90, 2200], [150, 200], [160, 0]];
+        }
+
+        if (maohPoly) {
+            // 100 ft of head = SG * 43.3 PSI
+            const maohHeadFt = (1000 * 100) / (activeSG * 43.3);
+            let maohPath = profilePoints.map(pt => {
+                const y = Math.max(0, 5000 - (pt[1] + maohHeadFt));
+                return `${pt[0]},${y.toFixed(1)}`;
+            }).join(' ');
+            
+            // Close the polygon along the top edge of the SVG to shade the area ABOVE the MAOH limit
+            maohPath += ` 160,0 0,0`;
+            maohPoly.setAttribute('points', maohPath);
         }
 
         // Commit PID changes to actual live variables
@@ -1441,7 +1534,8 @@ function runHydraulicTick() {
             pressCDisc: rawPressCDisc + getNoise(), pressDSuct: rawPressDSuct + getNoise(),
             flowA: rawFlowA + getNoise(), flowD: rawFlowD + getNoise(), pressASuct: rawPressASuct + getNoise(),
             hA_Suct: hA_Suct, hA_Disc: hA_Disc, hB_Suct: hB_Suct, hB_Disc: hB_Disc,
-            hC_Suct: hC_Suct, hC_Disc: hC_Disc, hD: hD
+            hC_Suct: hC_Suct, hC_Disc: hC_Disc, hD: hD,
+            rpmA: simRpmA, rpmB: simRpmB, rpmC: simRpmC
         };
 
         if (flushBufferNextTick) {
@@ -1469,36 +1563,61 @@ function runHydraulicTick() {
         const stateB = propagationBuffer[delayB] || propagationBuffer[0];
         const stateC = propagationBuffer[delayC] || propagationBuffer[0];
         const stateD = propagationBuffer[delayD] || propagationBuffer[0];
+        const liveState = propagationBuffer[0]; // Used to extract immediate local equipment effects
 
         // Map UI variables to their specific delayed timeline
-        const pressADisc = stateA.pressADisc; const flowA = stateA.flowA; const pressASuct = stateA.pressASuct;
-        const pressBSuct = stateB.pressBSuct; const pressBDisc = stateB.pressBDisc;
-        const pressCSuct = stateC.pressCSuct; const pressCDisc = stateC.pressCDisc;
-        const pressDSuct = stateD.pressDSuct; 
-        const flowD = stateD.flowD; 
+        let flowA = stateA.flowA; const pressASuct = stateA.pressASuct;
+        const pressBSuct = stateB.pressBSuct; 
+        const pressCSuct = stateC.pressCSuct; 
+        
+        // Decouple delivery flow: use delayed wave, but instantly choke it based on local PCV setpoint
+        const pcvClosureFactor = Math.max(0, 1 - ((spPressD - 100) / 700)); // 1.0 at 100 PSI, 0.0 at 800 PSI
+        const flowD = stateD.flowD * pcvClosureFactor;
+
+        // Decouple source flow: gracefully spin down flow A in tandem with the VFDs to override downhill gravity drafting
+        if (esdActive && esdTick < 120) {
+            flowA = flowA * Math.max(0, 1 - (esdTick / 120));
+        } else if (simRpmA < 1) {
+            flowA = 0; // Hard clamp when pump is fully off
+        }
+
+        // FIX: Local pump head and local PCV setpoints should display instantly ONLY when actively commanded (ESD/Trip),
+        // otherwise they should continue to ride the delayed fluid wave so leaks appear chronologically!
+        const pressADisc = stateA.pressASuct + (liveState.pressADisc - liveState.pressASuct); // A is always live
+        const pressBDisc = (esdActive || pumpBTripped) ? stateB.pressBSuct + (liveState.pressBDisc - liveState.pressBSuct) : stateB.pressBDisc;
+        const pressCDisc = (esdActive || pumpCTripped) ? stateC.pressCSuct + (liveState.pressCDisc - liveState.pressCSuct) : stateC.pressCDisc;
+        const pressDSuct = Math.max(stateD.pressDSuct, spPressD); // Local PCV backpressure acts instantly
+        
+        // Delay the visual VFD % to match the pressure wave unless local equipment is actively tripping
+        const dispRpmA = rpmA; 
+        const dispRpmB = (esdActive || pumpBTripped) ? rpmB : (stateB.rpmB || rpmB);
+        const dispRpmC = (esdActive || pumpCTripped) ? rpmC : (stateC.rpmC || rpmC);
+
+        const bActive = rpmB > 1 && !esdActive;
+        const cActive = rpmC > 1 && !esdActive;
 
         // CAVITATION / LOW SUCTION TRIPS (60-Second On-Delay Timer)
-        if (pressBSuct < 5) {
+        if (pressBSuct < 5 && bActive) {
             tripTimerB++;
             if (tripTimerB >= 60) pumpBTripped = true;
         } else {
-            tripTimerB = 0; // Reset timer if pressure recovers
+            tripTimerB = 0; // Reset timer if pressure recovers or pump is intentionally stopped
         }
 
-        if (pressCSuct < 5) {
+        if (pressCSuct < 5 && cActive) {
             tripTimerC++;
             if (tripTimerC >= 60) pumpCTripped = true;
         } else {
-            tripTimerC = 0; // Reset timer if pressure recovers
+            tripTimerC = 0; // Reset timer if pressure recovers or pump is intentionally stopped
         }
 
         // ANALOG LIMIT ALARMS (Checked every 1.0s)
-        setAlarmState('LO_SUCT_B', pressBSuct < 30 && pressBSuct >= 5, 'LO SUCT PRESS: STATION B', 'Priority 2', 'TAG_SUCT_B');
-        setAlarmState('LO_SUCT_C', pressCSuct < 30 && pressCSuct >= 5, 'LO SUCT PRESS: STATION C', 'Priority 2', 'TAG_SUCT_C');
+        setAlarmState('LO_SUCT_B', pressBSuct < 30 && pressBSuct >= 5 && bActive, 'LO SUCT PRESS: STATION B', 'Priority 2', 'TAG_SUCT_B');
+        setAlarmState('LO_SUCT_C', pressCSuct < 30 && pressCSuct >= 5 && cActive, 'LO SUCT PRESS: STATION C', 'Priority 2', 'TAG_SUCT_C');
         setAlarmState('TRIP_SUCT_B', pumpBTripped, 'PUMP B TRIPPED: LO-LO SUCTION', 'Priority 1', 'TAG_SUCT_B');
         setAlarmState('TRIP_SUCT_C', pumpCTripped, 'PUMP C TRIPPED: LO-LO SUCTION', 'Priority 1', 'TAG_SUCT_C');
-        setAlarmState('HI_VIB_B', pressBSuct < 15 && pressBSuct >= 5, 'PUMP B HI VIBRATION (CAVITATION)', 'Priority 3', 'TAG_VIB_B');
-        setAlarmState('HI_VIB_C', pressCSuct < 15 && pressCSuct >= 5, 'PUMP C HI VIBRATION (CAVITATION)', 'Priority 3', 'TAG_VIB_C');
+        setAlarmState('HI_VIB_B', pressBSuct < 15 && pressBSuct >= 5 && bActive, 'PUMP B HI VIBRATION (CAVITATION)', 'Priority 3', 'TAG_VIB_B');
+        setAlarmState('HI_VIB_C', pressCSuct < 15 && pressCSuct >= 5 && cActive, 'PUMP C HI VIBRATION (CAVITATION)', 'Priority 3', 'TAG_VIB_C');
         
         // For Q1 RTTM Graphics, we pull from 60 ticks ago to perfectly match our new 1-minute buffer
         const visA = rttmDelayEnabled ? (propagationBuffer[60] || propagationBuffer[0]) : stateA;
@@ -1506,17 +1625,25 @@ function runHydraulicTick() {
         const visC = rttmDelayEnabled ? (propagationBuffer[60] || propagationBuffer[0]) : stateC;
         const visD = rttmDelayEnabled ? (propagationBuffer[60] || propagationBuffer[0]) : stateD;
 
+        // Calculate instant local head for the pumps and PCV to reflect equipment states immediately in Q1
+        const localHeadB_Disc = (esdActive || pumpBTripped) ? visB.hB_Suct + ((liveState.pressBDisc - liveState.pressBSuct) / (0.433 * currentSG)) : visB.hB_Disc;
+        const localHeadC_Disc = (esdActive || pumpCTripped) ? visC.hC_Suct + ((liveState.pressCDisc - liveState.pressCSuct) / (0.433 * currentSG)) : visC.hC_Disc;
+        const localHeadD = visD.hD + ((Math.max(visD.pressDSuct, spPressD) - visD.pressDSuct) / (0.433 * currentSG));
+
         // HGL and Flow Visual Lines (Properly using delayed visual states)
         latestHGLTarget = [
             { x: 0,   y: Math.max(0, 5000 - visA.hA_Suct) }, { x: 0,   y: Math.max(0, 5000 - visA.hA_Disc) },
-            { x: 40,  y: Math.max(0, 5000 - visB.hB_Suct) }, { x: 40,  y: Math.max(0, 5000 - visB.hB_Disc) }, 
-            { x: 80,  y: Math.max(0, 5000 - visC.hC_Suct) }, { x: 80,  y: Math.max(0, 5000 - visC.hC_Disc) }, 
-            { x: 160, y: Math.max(0, 5000 - visD.hD) }       
+            { x: 40,  y: Math.max(0, 5000 - visB.hB_Suct) }, { x: 40,  y: Math.max(0, 5000 - localHeadB_Disc) }, 
+            { x: 80,  y: Math.max(0, 5000 - visC.hC_Suct) }, { x: 80,  y: Math.max(0, 5000 - localHeadC_Disc) }, 
+            { x: 160, y: Math.max(0, 5000 - localHeadD) }       
         ];
+
+        // Ensure Q1 Flow line respects the local PCV closure
+        const visFlowD = visD.flowD * Math.max(0, 1 - ((spPressD - 100) / 700));
 
         latestFlowTargetY = [
             5000 - ((visA.flowA / 3000) * 5000), 5000 - ((visB.flowA / 3000) * 5000), 
-            5000 - ((visC.flowA / 3000) * 5000), 5000 - ((visD.flowD / 3000) * 5000)  
+            5000 - ((visC.flowA / 3000) * 5000), 5000 - ((visFlowD / 3000) * 5000)  
         ];
 
         // --- WARMUP TRAP ---
@@ -1534,7 +1661,7 @@ function runHydraulicTick() {
             if (flowEl) flowEl.setAttribute('d', `M 0 ${latestFlowTargetY[0].toFixed(1)} L 40 ${latestFlowTargetY[1].toFixed(1)} L 80 ${latestFlowTargetY[2].toFixed(1)} L 160 ${latestFlowTargetY[3].toFixed(1)}`);
         }
 
-        const bindUI = (id, val) => {
+        const bindUI = (id, val, isLocked = false) => {
             const el = document.getElementById(id);
             if (el) {
                 // API 1165: Display magenta dashes for invalid/negative pressures (Rupture signature)
@@ -1543,7 +1670,7 @@ function runHydraulicTick() {
                     el.style.color = '#9C27B0'; // Muted Magenta
                 } else {
                     el.innerText = val.toFixed(0);
-                    el.style.color = ''; // Reset to standard font color
+                    el.style.color = isLocked ? '#888888' : ''; // Reset to standard font color OR lock to grey
                 }
                 
                 const prevVal = previousTelemetry[id] !== undefined ? previousTelemetry[id] : val;
@@ -1553,15 +1680,12 @@ function runHydraulicTick() {
                 // FAST ATTACK / SLOW DECAY RoC LOGIC
                 let currentRoc = rocState[id] || 0;
                 
-                // If the new delta spikes higher than our decaying state, instantly jump to it (Fast Attack)
-                // If the new delta drops to 0, slowly bleed off the visual bar (Slow Decay)
                 if (Math.abs(rawDelta) >= Math.abs(currentRoc)) {
                     currentRoc = rawDelta; 
                 } else {
                     currentRoc = currentRoc * 0.85; // 15% decay per tick leaves a visual "echo"
                 }
                 
-                // Noise floor cutoff to ensure it eventually rests at exactly zero
                 if (Math.abs(currentRoc) < 0.2) currentRoc = 0;
                 rocState[id] = currentRoc;
 
@@ -1583,16 +1707,18 @@ function runHydraulicTick() {
         };
 
         // Data bindings
-        bindUI('val-sta-a-suct', pressASuct); bindUI('val-sta-a-vfd', rpmA); bindUI('val-sta-a-disc', pressADisc); bindUI('val-sta-a-flow', flowA);
-        bindUI('val-sta-b-suct', pressBSuct); bindUI('val-sta-b-vfd', rpmB); bindUI('val-sta-b-disc', pressBDisc);
-        bindUI('val-sta-c-suct', pressCSuct); bindUI('val-sta-c-vfd', rpmC); bindUI('val-sta-c-disc', pressCDisc);
+        bindUI('val-sta-a-suct', pressASuct); bindUI('val-sta-a-vfd', dispRpmA); bindUI('val-sta-a-disc', pressADisc); bindUI('val-sta-a-flow', flowA);
+        bindUI('val-sta-b-suct', pressBSuct); bindUI('val-sta-b-vfd', dispRpmB); bindUI('val-sta-b-disc', pressBDisc);
+        bindUI('val-sta-c-suct', pressCSuct); bindUI('val-sta-c-vfd', dispRpmC); bindUI('val-sta-c-disc', pressCDisc);
         
-        const pcvD = Math.max(0, Math.min(100, (flowD / 2500) * 100)); // Fixed to use flowD
+        // Calculate PCV % based on the newly calculated flowD
+        const pcvD = Math.max(0, Math.min(100, (flowD / 2500) * 100)); 
         bindUI('val-sta-d-suct', pressDSuct); bindUI('val-sta-d-pcv', pcvD); bindUI('val-sta-d-flow', flowD);
-        bindUI('l3-val-d-sp', spPressD); // Added bindings for static PCV targets
+        bindUI('l3-val-d-sp', spPressD, true); // Q2 Delivery Setpoint Target (Locked Color)
+        bindUI('val-sta-d-sp-q3', spPressD, true); // Q3 Delivery Setpoint Target (Locked Color)
         
         bindUI('l3-val-a-suct', pressASuct); bindUI('l3-val-a-disc', pressADisc); bindUI('l3-val-a-flow', flowA);
-        bindUI('l3-val-a-rpm-sp', rpmA); bindUI('l3-val-a-rpm', rpmA);
+        bindUI('l3-val-a-rpm-sp', dispRpmA); bindUI('l3-val-a-rpm', dispRpmA);
         
         // TANK A: Vol counts DOWN, Rem counts UP (What was delivered)
         bindUI('l3-val-a-tank-flow', flowA); bindUI('l3-val-a-vol', tankVolA); bindUI('l3-val-a-rem-tank', maxTankVolA - tankVolA);
@@ -1614,11 +1740,35 @@ function runHydraulicTick() {
 
         const updatePumpIcon = (id, rpm, size = 'L2') => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = ObjectLibrary.getPump(rpm > 1 ? "RUNNING" : "STOPPED", size);
+            if (!el) return;
+            let state = rpm > 1 ? "RUNNING" : "STOPPED";
+            
+            if (esdActive) {
+                if (esdTick < 120) state = "TRANSITION"; // 2 Minutes
+                else state = "STOPPED";
+            }
+            el.innerHTML = ObjectLibrary.getPump(state, size);
         };
 
-        updatePumpIcon('icon-sta-a', rpmA, 'L2'); updatePumpIcon('l3-pump-a', rpmA, 'L3');
-        updatePumpIcon('icon-sta-b', rpmB, 'L2'); updatePumpIcon('icon-sta-c', rpmC, 'L2');
+        updatePumpIcon('icon-sta-a', dispRpmA, 'L2'); updatePumpIcon('l3-pump-a', dispRpmA, 'L3');
+        updatePumpIcon('icon-sta-b', dispRpmB, 'L2'); updatePumpIcon('icon-sta-c', dispRpmC, 'L2');
+        
+        const updateMlvIcons = () => {
+            let state = "OPEN";
+            if (esdActive) {
+                if (esdTick < 180) state = "TRANSITION"; // 3 Minutes
+                else state = "CLOSED";
+            }
+            [20, 40, 60, 80, 120, 150].forEach(mile => {
+                const el = document.getElementById(`mlv-${mile}`);
+                if (el) el.innerHTML = ObjectLibrary.getGateValve(state, 'L2');
+            });
+            
+            // visually de-energize the pipeline when valves are fully closed
+            const pipeEl = document.getElementById('q1-mainline-pipe');
+            if (pipeEl) pipeEl.style.backgroundColor = state === "CLOSED" ? '#A0A0A0' : '#555555';
+        };
+        updateMlvIcons();
 
         // ==========================================
         // COMPENSATED MASS BALANCE (Rate-Based Pseudo-RTTM)
@@ -2123,5 +2273,9 @@ setTimeout(() => {
     const syncBtn = document.getElementById('btn-calc-sync');
     if (syncBtn) syncBtn.click();
     
-    console.log("🤖 UI Autopilot: Controls Tab Opened & Calculator Synced.");
+    // 3. Auto-play the simulator
+    const playBtn = document.getElementById('btn-play');
+    if (playBtn) playBtn.click();
+    
+    console.log("🤖 UI Autopilot: Controls Tab Opened, Calculator Synced, and Simulator Started.");
 }, 1000); // Wait 1 second to ensure DOM and variables are fully mounted
