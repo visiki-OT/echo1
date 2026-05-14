@@ -153,9 +153,9 @@
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 
-<body class="font-body text-on-surface select-none overflow-hidden h-screen w-screen" style="background-color: #F1F1F1;">
+<body class="font-body text-on-surface select-none overflow-y-auto md:overflow-hidden h-auto md:h-screen w-full" style="background-color: #F1F1F1;">
     
-    <main class="grid grid-cols-2 grid-rows-2 h-screen w-screen">
+    <main class="flex flex-col md:grid md:grid-cols-2 md:grid-rows-2 min-h-screen md:h-screen w-full">
         
         <section data-dev-note="Q1: HYDRAULIC GRADIENT" class="grid-border bg-surface !bg-[#F1F1F1] relative !p-0 !m-0 overflow-hidden" id="q1-container">
             <button id="btn-rttm-toggle" class="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 bg-[#E0E0E0] border border-outline text-[12px] font-bold uppercase tracking-widest text-[#555555] hover:bg-[#D0D0D0] transition-colors shadow-sm flex items-center gap-2">
