@@ -143,18 +143,18 @@
 
         /* MVP Mobile Responsive Stack */
         @media (max-width: 768px) {
-            ::-webkit-scrollbar { display: none; } /* Clean up mobile scrolling */
+            ::-webkit-scrollbar { display: none; }
         }
     </style>
     
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 
-<body class="font-body text-on-surface select-none overflow-hidden h-screen w-full" style="background-color: #F1F1F1;">
+<body class="font-body text-on-surface select-none overflow-auto md:overflow-hidden h-auto md:h-screen w-full" style="background-color: #F1F1F1;">
     
-    <main class="grid grid-cols-1 md:grid-cols-2 grid-rows-[50vh_50vh_50vh_50vh] md:grid-rows-2 h-screen w-full overflow-y-auto md:overflow-hidden pb-20 md:pb-0">
+    <main class="flex flex-col md:grid md:grid-cols-2 md:grid-rows-2 h-auto md:h-screen w-full overflow-y-auto md:overflow-hidden pb-20 md:pb-0">
         
-        <section data-dev-note="Q1: HYDRAULIC GRADIENT" class="grid-border bg-surface !bg-[#F1F1F1] relative !p-0 !m-0 overflow-hidden md:h-full" id="q1-container">
+        <section data-dev-note="Q1: HYDRAULIC GRADIENT" class="grid-border bg-surface !bg-[#F1F1F1] relative !p-0 !m-0 overflow-hidden md:h-full min-h-[65vh] shrink-0 md:min-h-0" id="q1-container">
             <button id="btn-rttm-toggle" class="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 bg-[#E0E0E0] border border-outline text-[12px] font-bold uppercase tracking-widest text-[#555555] hover:bg-[#D0D0D0] transition-colors shadow-sm flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-[#555555]" id="rttm-indicator"></span>
                 RTTM LAG: OFF
@@ -224,7 +224,8 @@
             </div>
         </section>
         
-        <section data-dev-note="Q2: FLEX SPACE" id="q2-container" class="grid-border bg-[#F1F1F1] flex flex-col relative !p-0 md:h-full"><div class="flex border-b border-[#333333] bg-[#E0E0E0]">
+        <section data-dev-note="Q2: FLEX SPACE" id="q2-container" class="grid-border bg-[#F1F1F1] flex flex-col relative !p-0 md:h-full min-h-[65vh] shrink-0 md:min-h-0">
+            <div class="flex border-b border-[#333333] bg-[#E0E0E0]">
                 <button class="flex-1 py-2 px-4 border-r border-[#333333] font-headline text-[12px] font-bold uppercase tracking-widest bg-[#37474F] text-white hover:bg-[#37474F] transition-colors" id="tab-btn-controls">Controls</button>
                 <button class="flex-1 py-2 px-4 border-r border-[#333333] font-headline text-[12px] font-bold uppercase tracking-widest text-[#333333] hover:bg-[#D0D0D0] transition-colors" id="tab-btn-trends">Trends</button>
                 <button class="flex-1 py-2 px-4 border-r border-[#333333] font-headline text-[12px] font-bold uppercase tracking-widest text-[#333333] hover:bg-[#D0D0D0] transition-colors" id="tab-btn-config">Config</button>
@@ -718,7 +719,7 @@
         </section>
                 
         
-       <section data-dev-note="Q3: TABULAR DATA" class="grid-border bg-surface p-0 flex flex-col !bg-[#F1F1F1] pr-[0px] relative md:h-full" id="q3-container">
+       <section data-dev-note="Q3: TABULAR DATA" class="grid-border bg-surface p-0 flex flex-col !bg-[#F1F1F1] pr-[0px] relative md:h-full min-h-[65vh] shrink-0 md:min-h-0" id="q3-container">
             <div class="flex-grow overflow-auto">
                 <table class="w-full border-collapse strict-row-h table-fixed">
                     <thead>
@@ -816,7 +817,7 @@
             </div>
         </section>
         
-       <section data-dev-note="Q4: ALARM SUMMARY" class="grid-border bg-surface flex flex-col p-0 overflow-hidden !bg-[#F1F1F1] md:h-full">
+       <section data-dev-note="Q4: ALARM SUMMARY" class="grid-border bg-surface flex flex-col p-0 overflow-hidden !bg-[#F1F1F1] md:h-full min-h-[65vh] shrink-0 md:min-h-0">
             <div class="px-6 py-0 h-[41px] border-b border-outline flex justify-between items-center bg-surface-container text-on-surface shrink-0" style="box-sizing: border-box;">
                 <div class="flex items-center gap-3">
                     <span id="pipeline-title-display" class="font-headline text-[14px] font-bold uppercase tracking-widest text-[#333333]">ALARM SUMMARY - SYSTEM STATUS</span>
