@@ -157,7 +157,7 @@
     
     <main class="flex flex-col md:grid md:grid-cols-2 md:grid-rows-2 min-h-screen md:h-screen w-full">
         
-        <section data-dev-note="Q1: HYDRAULIC GRADIENT" class="grid-border bg-surface !bg-[#F1F1F1] relative !p-0 !m-0 overflow-hidden" id="q1-container">
+        <section data-dev-note="Q1: HYDRAULIC GRADIENT" class="grid-border bg-surface !bg-[#F1F1F1] relative !p-0 !m-0 overflow-hidden md:h-full" id="q1-container">
             <button id="btn-rttm-toggle" class="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 bg-[#E0E0E0] border border-outline text-[12px] font-bold uppercase tracking-widest text-[#555555] hover:bg-[#D0D0D0] transition-colors shadow-sm flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-[#555555]" id="rttm-indicator"></span>
                 RTTM LAG: OFF
@@ -227,8 +227,7 @@
             </div>
         </section>
         
-        <section data-dev-note="Q2: FLEX SPACE" id="q2-container" class="grid-border bg-[#F1F1F1] flex flex-col relative !p-0">
-            <div class="flex border-b border-[#333333] bg-[#E0E0E0]">
+        <section data-dev-note="Q2: FLEX SPACE" id="q2-container" class="grid-border bg-[#F1F1F1] flex flex-col relative !p-0 md:h-full"><div class="flex border-b border-[#333333] bg-[#E0E0E0]">
                 <button class="flex-1 py-2 px-4 border-r border-[#333333] font-headline text-[12px] font-bold uppercase tracking-widest bg-[#37474F] text-white hover:bg-[#37474F] transition-colors" id="tab-btn-controls">Controls</button>
                 <button class="flex-1 py-2 px-4 border-r border-[#333333] font-headline text-[12px] font-bold uppercase tracking-widest text-[#333333] hover:bg-[#D0D0D0] transition-colors" id="tab-btn-trends">Trends</button>
                 <button class="flex-1 py-2 px-4 border-r border-[#333333] font-headline text-[12px] font-bold uppercase tracking-widest text-[#333333] hover:bg-[#D0D0D0] transition-colors" id="tab-btn-config">Config</button>
