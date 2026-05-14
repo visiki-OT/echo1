@@ -142,6 +142,18 @@
         @keyframes pulse-sys { 0%, 100% { outline-color: #555555; } 50% { outline-color: transparent; } }
 
         
+    /* iOS Safari Rescue Block */
+        @media screen and (max-width: 768px) {
+            html, body { overflow: auto !important; height: auto !important; }
+            main { display: block !important; height: auto !important; overflow: visible !important; }
+            section { 
+                display: block !important; 
+                height: 75vh !important; 
+                max-height: 75vh !important; 
+                width: 100% !important;
+                border-bottom: 4px solid #333333 !important;
+            }
+        }
     </style>
     
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
